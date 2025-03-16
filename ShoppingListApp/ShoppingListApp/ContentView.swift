@@ -1,39 +1,38 @@
 import SwiftUI
-import Foundation
+import CoreData
 
 struct ContentView: View {
-    @State private var shoppingList: [ShoppingItem] = [
-        ShoppingItem(id: UUID(), name: "Milk", price: 3.99, quantity: 1, category: "Dairy", tax: 0.20),
-        ShoppingItem(id: UUID(), name: "Bread", price: 2.50, quantity: 2, category: "Bakery", tax: 0.15),
-        ShoppingItem(id: UUID(), name: "Apples", price: 5.00, quantity: 1, category: "Fruits", tax: 0.25)
-    ]
-    
-    @State private var groups: [ShoppingGroup] = [
-            ShoppingGroup(name: "Groceries", items: []),
-            ShoppingGroup(name: "Electronics", items: [])
-        ]
-    
+    @Environment(\.managedObjectContext) private var viewContext
+
+    // ✅ Fetch Shopping Items from Core Data
+    @FetchRequest(
+        entity: ShoppingItem.entity(),
+        sortDescriptors: [NSSortDescriptor(keyPath: \ShoppingItem.name, ascending: true)]
+    ) private var shoppingList: FetchedResults<ShoppingItem>
+
+    // ✅ Fetch Shopping Groups from Core Data
+    @FetchRequest(
+        entity: ShoppingGroup.entity(),
+        sortDescriptors: [NSSortDescriptor(keyPath: \ShoppingGroup.name, ascending: true)]
+    ) private var groups: FetchedResults<ShoppingGroup>
+
     @State private var showAddItemScreen = false
+    @State private var showGroupsScreen = false // ✅ New state for GroupsView modal
     @State private var editingItem: ShoppingItem? // Stores the item being edited
 
     var totalCost: Double {
-        shoppingList.reduce(0) { $0 + ($1.totalPrice) }
+        shoppingList.reduce(0) { $0 + $1.totalPrice }
     }
 
     var body: some View {
         NavigationView {
             VStack {
                 List {
-                    ForEach(shoppingList) { item in
-                        Button(action: {
-                            editingItem = item // Set item for editing
-                            showAddItemScreen = true
-                        }) {
-                            ShoppingItemRow(item: item)
-                        }
-                        .buttonStyle(PlainButtonStyle()) // Removes button styling
-                    }
-                    .onDelete(perform: deleteItem)
+                    // ✅ Display Groups Section
+                    groupsSection()
+
+                    // ✅ Display Shopping Items Section
+                    shoppingItemsSection()
                 }
                 .listStyle(InsetGroupedListStyle())
 
@@ -48,13 +47,16 @@ struct ContentView: View {
             }
             .navigationTitle("Shopping List")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: GroupsView(shoppingList: $shoppingList)) {
-                        Image(systemName: "folder.fill")
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    // ✅ Folder Icon to Open GroupsView (Fixed Error)
+                    Button(action: {
+                        showGroupsScreen.toggle()
+                    }) {
+                        Image(systemName: "folder")
                             .foregroundColor(.blue)
                     }
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         editingItem = nil // Set to nil for new item
@@ -64,63 +66,71 @@ struct ContentView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showGroupsScreen) {
+                GroupsView(shoppingList: Array(shoppingList)) // ✅ Convert FetchedResults to Array
+            }
             .sheet(isPresented: $showAddItemScreen) {
                 AddEditItemView(
                     itemToEdit: editingItem,
-                    groups: groups,// Pass the selected item
-                    onSave: { newItem in
-                        if let index = shoppingList.firstIndex(where: { $0.id == newItem.id }) {
-                            shoppingList[index] = newItem // Edit existing item
-                        } else {
-                            shoppingList.append(newItem) // Add new item
-                        }
-                        
-                        updateGroups()
-                    }
+                    groups: Array(groups), // ✅ Convert FetchedResults to Array
+                    context: viewContext,
+                    onSave: { try? viewContext.save() }
                 )
             }
         }
     }
 
-    private func updateGroups() {
-        for i in groups.indices{
-            groups[i].items = shoppingList.filter({$0.groupId == groups[i].id})
+    // ✅ Groups Section
+    @ViewBuilder
+    private func groupsSection() -> some View {
+        if !groups.isEmpty {
+            Section(header: Text("Item Groups")) {
+                ForEach(groups, id: \.self) { group in
+                    NavigationLink(destination: GroupDetailView(group: group, items: shoppingList.filter { $0.group == group })) { // ✅ Pass items
+                        HStack {
+                            Text(group.name ?? "Unnamed Group")
+                                .font(.headline)
+                            Spacer()
+                            Text("Total: $\(group.totalCost, specifier: "%.2f")")
+                                .foregroundColor(.gray)
+                        }
+                    }
+                }
+            }
         }
     }
-    
+
+    // ✅ Shopping Items Section
+    @ViewBuilder
+    private func shoppingItemsSection() -> some View {
+        Section(header: Text("Shopping List")) {
+            ForEach(shoppingList, id: \.self) { item in
+                Button(action: {
+                    editingItem = item // Set item for editing
+                    showAddItemScreen = true
+                }) {
+                    ShoppingItemRow(item: item)
+                }
+                .buttonStyle(PlainButtonStyle()) // Removes button styling
+            }
+            .onDelete(perform: deleteItem)
+        }
+    }
+
+    // ✅ Delete Shopping Item from Core Data
+    private func deleteItem(at offsets: IndexSet) {
+        for index in offsets {
+            let item = shoppingList[index]
+            viewContext.delete(item)
+        }
+        try? viewContext.save()
+    }
+
     private func subtotal() -> Double {
         shoppingList.reduce(0) { $0 + ($1.price * Double($1.quantity)) }
     }
 
     private func totalTax() -> Double {
         shoppingList.reduce(0) { $0 + ($1.tax * Double($1.quantity)) }
-    }
-
-    private func deleteItem(at offsets: IndexSet) {
-        shoppingList.remove(atOffsets: offsets)
-    }
-    
-    struct ShoppingItemRow: View {
-        let item: ShoppingItem
-
-        var body: some View {
-            HStack {
-                VStack(alignment: .leading) {
-                    Text(item.name)
-                        .font(.headline)
-                    Text("Category: \(item.category)")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                }
-                Spacer()
-                VStack(alignment: .trailing) {
-                    Text("$\(item.totalPrice, specifier: "%.2f")")
-                        .font(.headline)
-                    Text("Qty: \(item.quantity)")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                }
-            }
-        }
     }
 }

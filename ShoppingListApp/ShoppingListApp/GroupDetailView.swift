@@ -11,16 +11,20 @@ struct GroupDetailView: View {
                     .foregroundColor(.gray)
                     .italic()
             } else {
-                ForEach(items) { item in
-                    ShoppingItemRow(item: item) // ✅ Show assigned items
+                ForEach(items, id: \.self) { item in // ✅ Fix ForEach
+                    ShoppingItemRow(item: item)
                 }
             }
         }
         .listStyle(InsetGroupedListStyle())
-        .navigationTitle(group.name)
+        .navigationTitle(group.name ?? "Unnamed Group") // ✅ Fix Optional String
     }
 }
 
 #Preview {
-    GroupDetailView(group: ShoppingGroup(name: "Example Group", items: []), items: [])
+    let exampleGroup = ShoppingGroup(context: PersistenceController.shared.context)
+    exampleGroup.id = UUID()
+    exampleGroup.name = "Example Group"
+
+    return GroupDetailView(group: exampleGroup, items: [])
 }

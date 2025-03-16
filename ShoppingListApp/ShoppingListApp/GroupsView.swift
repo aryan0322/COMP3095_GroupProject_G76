@@ -1,27 +1,33 @@
 import SwiftUI
+import CoreData
 
 struct GroupsView: View {
-    @State private var groups: [ShoppingGroup] = [
-        ShoppingGroup(name: "Groceries", items: []),
-        ShoppingGroup(name: "Electronics", items: [])
-    ]
-    
-    @Binding var shoppingList: [ShoppingItem]
-    
+    @Environment(\.managedObjectContext) private var viewContext
+
+    // ✅ Fetch Core Data Shopping Groups
+    @FetchRequest(
+        entity: ShoppingGroup.entity(),
+        sortDescriptors: [NSSortDescriptor(keyPath: \ShoppingGroup.name, ascending: true)]
+    ) private var groups: FetchedResults<ShoppingGroup>
+
+    var shoppingList: [ShoppingItem]
     @State private var newGroupName = ""
     @State private var showAddGroupAlert = false
-    
+
     var body: some View {
         NavigationView {
             VStack {
                 List {
-                    ForEach(groups) { group in
-                        NavigationLink(destination: GroupDetailView(group: group, items: shoppingList.filter{$0.groupId == group.id})) {
+                    ForEach(groups, id: \.self) { group in
+                        NavigationLink(destination: GroupDetailView(
+                            group: group,
+                            items: shoppingList.filter { $0.group == group } // ✅ Filter correctly
+                        )) {
                             HStack {
-                                Text(group.name)
+                                Text(group.name ?? "Unnamed Group") // ✅ Fix Optional
                                     .font(.headline)
                                 Spacer()
-                                Text("Total: $\(group.totalCost(), specifier: "%.2f")")
+                                Text("Total: $\(group.totalCost, specifier: "%.2f")")
                                     .foregroundColor(.gray)
                             }
                         }
@@ -29,7 +35,7 @@ struct GroupsView: View {
                     .onDelete(perform: deleteGroup)
                 }
                 .listStyle(InsetGroupedListStyle())
-                
+
                 Button(action: { showAddGroupAlert = true }) {
                     Text("Add New Group")
                         .font(.headline)
@@ -50,20 +56,29 @@ struct GroupsView: View {
         }
     }
 
-    // Function to Add a New Group
+    // ✅ Function to Add a New Group in Core Data
     private func addGroup() {
         guard !newGroupName.isEmpty else { return }
-        groups.append(ShoppingGroup(name: newGroupName, items: []))
+        
+        let newGroup = ShoppingGroup(context: viewContext) // ✅ Use Core Data Context
+        newGroup.id = UUID()
+        newGroup.name = newGroupName
+
+        try? viewContext.save() // ✅ Save to Core Data
         newGroupName = ""
     }
 
-    // Function to Delete a Group
+    // ✅ Function to Delete a Group in Core Data
     private func deleteGroup(at offsets: IndexSet) {
-        groups.remove(atOffsets: offsets)
+        for index in offsets {
+            let group = groups[index]
+            viewContext.delete(group)
+        }
+        try? viewContext.save()
     }
-    
 }
 
 #Preview {
-    GroupsView(shoppingList: .constant([]))
+    GroupsView(shoppingList: [])
+        .environment(\.managedObjectContext, PersistenceController.shared.context) // ✅ Fix Preview
 }

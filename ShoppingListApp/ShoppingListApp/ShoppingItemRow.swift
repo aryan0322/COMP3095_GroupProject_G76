@@ -6,9 +6,9 @@ struct ShoppingItemRow: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading) {
-                Text(item.name)
+                Text(item.name ?? "Unknown Item")
                     .font(.headline)
-                Text("Category: \(item.category)")
+                Text("Category: \(item.category ?? "Unknown")")
                     .font(.subheadline)
                     .foregroundColor(.gray)
             }

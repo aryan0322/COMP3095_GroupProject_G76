@@ -1,6 +1,6 @@
 import Foundation
 
-struct ShoppingItem: Identifiable {
+struct ShoppingItemModel: Identifiable {
     let id: UUID
     var name: String
     var price: Double

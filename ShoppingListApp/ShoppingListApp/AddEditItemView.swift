@@ -1,28 +1,32 @@
 import SwiftUI
+import CoreData
 
 struct AddEditItemView: View {
     @Environment(\.presentationMode) var presentationMode
-    @State var name: String
-    @State var price: String
-    @State var quantity: String
-    @State var selectedCategory: String
-    @State var selectedGroupId: UUID? // Stores selected group
+    let context: NSManagedObjectContext
+    var itemToEdit: ShoppingItem? // ✅ Core Data Object
+    var groups: [ShoppingGroup] // ✅ List of Groups
+    
+    @State private var name: String = ""
+    @State private var price: String = ""
+    @State private var quantity: String = "1"
+    @State private var selectedCategory: String = "Grocery"
+    @State private var selectedGroup: ShoppingGroup? // ✅ Stores selected Core Data group
 
     let categories = ["Grocery", "Electronics", "Clothing", "Household"]
-    var groups: [ShoppingGroup] // List of groups
-    var onSave: (ShoppingItem) -> Void
-    var itemToEdit: ShoppingItem?
+    var onSave: (() -> Void)? // ✅ Optional onSave Callback
 
-    init(itemToEdit: ShoppingItem?, groups: [ShoppingGroup], onSave: @escaping (ShoppingItem) -> Void) {
-        self.onSave = onSave
-        self.groups = groups
+    init(itemToEdit: ShoppingItem?, groups: [ShoppingGroup], context: NSManagedObjectContext, onSave: (() -> Void)? = nil) {
+        self.context = context
         self.itemToEdit = itemToEdit
+        self.groups = groups
+        self.onSave = onSave
 
         _name = State(initialValue: itemToEdit?.name ?? "")
         _price = State(initialValue: itemToEdit?.price.description ?? "")
         _quantity = State(initialValue: itemToEdit?.quantity.description ?? "1")
         _selectedCategory = State(initialValue: itemToEdit?.category ?? "Grocery")
-        _selectedGroupId = State(initialValue: itemToEdit?.groupId)
+        _selectedGroup = State(initialValue: itemToEdit?.group) // ✅ Assign Core Data group
     }
 
     var calculatedTax: Double {
@@ -58,10 +62,10 @@ struct AddEditItemView: View {
                 }
 
                 Section(header: Text("Assign to Group")) {
-                    Picker("Select Group", selection: $selectedGroupId) {
-                        Text("None").tag(UUID?.none) // No group
-                        ForEach(groups) { group in
-                            Text(group.name).tag(group.id as UUID?)
+                    Picker("Select Group", selection: $selectedGroup) {
+                        Text("None").tag(nil as ShoppingGroup?)
+                        ForEach(groups, id: \.self) { group in
+                            Text(group.name ?? "Unnamed Group").tag(group as ShoppingGroup?)
                         }
                     }
                     .pickerStyle(MenuPickerStyle())
@@ -85,17 +89,17 @@ struct AddEditItemView: View {
     }
 
     func saveItem() {
-        let newItem = ShoppingItem(
-            id: itemToEdit?.id ?? UUID(),
-            name: name,
-            price: Double(price) ?? 0.0,
-            quantity: Int(quantity) ?? 1,
-            category: selectedCategory,
-            tax: calculatedTax,
-            groupId: selectedGroupId // ✅ Updates the group ID
-        )
+        let item = itemToEdit ?? ShoppingItem(context: context) // ✅ Use Core Data object
+        item.id = item.id ?? UUID()
+        item.name = name
+        item.price = Double(price) ?? 0.0
+        item.quantity = Int64(quantity) ?? 1
+        item.category = selectedCategory
+        item.tax = calculatedTax
+        item.group = selectedGroup // ✅ Assign selected group to Core Data
 
-        onSave(newItem)
+        try? context.save() // ✅ Save changes to Core Data
+        onSave?() // ✅ Call the onSave function if provided
         presentationMode.wrappedValue.dismiss()
     }
 }

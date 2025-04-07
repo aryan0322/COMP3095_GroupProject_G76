@@ -28,8 +28,6 @@ struct ContentView: View {
         NavigationView {
             VStack {
                 List {
-                    // ✅ Display Groups Section
-                    groupsSection()
 
                     // ✅ Display Shopping Items Section
                     shoppingItemsSection()
